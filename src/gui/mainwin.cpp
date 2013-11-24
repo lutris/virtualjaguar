@@ -224,7 +224,7 @@ MainWin::MainWin(bool autoRun): running(true), powerButtonOn(false),
 	connect(frameAdvanceAct, SIGNAL(triggered()), this, SLOT(FrameAdvance()));
 
 	fullScreenAct = new QAction(QIcon(":/res/fullscreen.png"), tr("F&ull Screen"), this);
-	fullScreenAct->setShortcut(QKeySequence(tr("F9")));
+	fullScreenAct->setShortcut(QKeySequence(tr("F11")));
 	fullScreenAct->setShortcutContext(Qt::ApplicationShortcut);
 	fullScreenAct->setCheckable(true);
 	connect(fullScreenAct, SIGNAL(triggered()), this, SLOT(ToggleFullScreen()));
@@ -451,7 +451,7 @@ void MainWin::keyPressEvent(QKeyEvent * e)
 		e->accept();
 		return;
 	}
-	else if (e->key() == Qt::Key_F11)
+	else if (e->key() == Qt::Key_F9)
 	{
 		startM68KTracing = true;
 		e->accept();
