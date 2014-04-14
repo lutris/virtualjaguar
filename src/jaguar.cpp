@@ -25,6 +25,7 @@
 #include "dsp.h"
 #include "eeprom.h"
 #include "event.h"
+#include "foooked.h"
 #include "gpu.h"
 #include "jerry.h"
 #include "joystick.h"
@@ -44,6 +45,7 @@
 #define CPU_DEBUG_MEMORY
 //#define LOG_CD_BIOS_CALLS
 #define CPU_DEBUG_TRACING
+#define ALPINE_FUNCTIONS
 
 // Private function prototypes
 
@@ -79,10 +81,29 @@ uint32_t returnAddr[4000], raPtr = 0xFFFFFFFF;
 #endif
 
 uint32_t pcQueue[0x400];
+uint32_t a0Queue[0x400];
+uint32_t a1Queue[0x400];
 uint32_t a2Queue[0x400];
+uint32_t a3Queue[0x400];
+uint32_t a4Queue[0x400];
+uint32_t a5Queue[0x400];
+uint32_t a6Queue[0x400];
+uint32_t a7Queue[0x400];
 uint32_t d0Queue[0x400];
+uint32_t d1Queue[0x400];
+uint32_t d2Queue[0x400];
+uint32_t d3Queue[0x400];
+uint32_t d4Queue[0x400];
+uint32_t d5Queue[0x400];
+uint32_t d6Queue[0x400];
+uint32_t d7Queue[0x400];
 uint32_t pcQPtr = 0;
 bool startM68KTracing = false;
+
+// Breakpoint on memory access vars (exported)
+bool bpmActive = false;
+uint32_t bpmAddress1;
+
 
 //
 // Callback function to detect illegal instructions
@@ -140,8 +161,22 @@ if (inRoutine)
 // For tracebacks...
 // Ideally, we'd save all the registers as well...
 	pcQueue[pcQPtr] = m68kPC;
+	a0Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A0);
+	a1Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A1);
 	a2Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A2);
+	a3Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A3);
+	a4Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A4);
+	a5Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A5);
+	a6Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A6);
+	a7Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_A7);
 	d0Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D0);
+	d1Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D1);
+	d2Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D2);
+	d3Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D3);
+	d4Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D4);
+	d5Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D5);
+	d6Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D6);
+	d7Queue[pcQPtr] = m68k_get_reg(NULL, M68K_REG_D7);
 	pcQPtr++;
 	pcQPtr &= 0x3FF;
 
@@ -152,7 +187,8 @@ if (inRoutine)
 		static char buffer[2048];
 		for(int i=0; i<0x400; i++)
 		{
-			WriteLog("[A2=%08X, D0=%08X]\n", a2Queue[(pcQPtr + i) & 0x3FF], d0Queue[(pcQPtr + i) & 0x3FF]);
+//			WriteLog("[A2=%08X, D0=%08X]\n", a2Queue[(pcQPtr + i) & 0x3FF], d0Queue[(pcQPtr + i) & 0x3FF]);
+			WriteLog("[A0=%08X, A1=%08X, A2=%08X, A3=%08X, A4=%08X, A5=%08X, A6=%08X, A7=%08X, D0=%08X, D1=%08X, D2=%08X, D3=%08X, D4=%08X, D5=%08X, D6=%08X, D7=%08X]\n", a0Queue[(pcQPtr + i) & 0x3FF], a1Queue[(pcQPtr + i) & 0x3FF], a2Queue[(pcQPtr + i) & 0x3FF], a3Queue[(pcQPtr + i) & 0x3FF], a4Queue[(pcQPtr + i) & 0x3FF], a5Queue[(pcQPtr + i) & 0x3FF], a6Queue[(pcQPtr + i) & 0x3FF], a7Queue[(pcQPtr + i) & 0x3FF], d0Queue[(pcQPtr + i) & 0x3FF], d1Queue[(pcQPtr + i) & 0x3FF], d2Queue[(pcQPtr + i) & 0x3FF], d3Queue[(pcQPtr + i) & 0x3FF], d4Queue[(pcQPtr + i) & 0x3FF], d5Queue[(pcQPtr + i) & 0x3FF], d6Queue[(pcQPtr + i) & 0x3FF], d7Queue[(pcQPtr + i) & 0x3FF]);
 			m68k_disassemble(buffer, pcQueue[(pcQPtr + i) & 0x3FF], 0);//M68K_CPU_TYPE_68000);
 			WriteLog("\t%08X: %s\n", pcQueue[(pcQPtr + i) & 0x3FF], buffer);
 		}
@@ -830,26 +866,32 @@ WriteLog("JERRY: (68K int en/lat - Unhandled!) Tried to write $%02X to $%08X!\n"
 		;	// Do nothing
 }
 
+
 void WriteWord(uint32_t adddress, uint16_t word)
 {
 }
+
 
 void WriteDWord(uint32_t adddress, uint32_t dword)
 {
 }
 
+
 uint8_t ReadByte(uint32_t adddress)
 {
 }
+
 
 uint16_t ReadWord(uint32_t adddress)
 {
 }
 
+
 uint32_t ReadDWord(uint32_t adddress)
 {
 }
 #endif
+
 
 void ShowM68KContext(void)
 {
@@ -883,6 +925,7 @@ void ShowM68KContext(void)
 	}
 	while (disPC < (currpc + 10));
 }
+
 
 //
 // Custom UAE 68000 read/write/IRQ functions
@@ -975,10 +1018,17 @@ int irq_ack_handler(int level)
 	return M68K_INT_ACK_AUTOVECTOR;
 }
 
+
 //#define USE_NEW_MMU
 
 unsigned int m68k_read_memory_8(unsigned int address)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 #ifdef CPU_DEBUG_MEMORY
@@ -1026,11 +1076,18 @@ unsigned int m68k_read_memory_8(unsigned int address)
 #endif
 }
 
+
 void gpu_dump_disassembly(void);
 void gpu_dump_registers(void);
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 #ifdef CPU_DEBUG_MEMORY
@@ -1130,8 +1187,15 @@ unsigned int m68k_read_memory_16(unsigned int address)
 #endif
 }
 
+
 unsigned int m68k_read_memory_32(unsigned int address)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 //; So, it seems that it stores the returned DWORD at $51136 and $FB074.
@@ -1146,8 +1210,15 @@ unsigned int m68k_read_memory_32(unsigned int address)
 #endif
 }
 
+
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 #ifdef CPU_DEBUG_MEMORY
@@ -1196,8 +1267,15 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 #endif
 }
 
+
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 #ifdef CPU_DEBUG_MEMORY
@@ -1284,8 +1362,15 @@ if (address == 0xF02110)
 #endif
 }
 
+
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
+#ifdef ALPINE_FUNCTIONS
+	// Check if breakpoint on memory is active, and deal with it
+	if (bpmActive && address == bpmAddress1)
+		M68KDebugHalt();
+#endif
+
 	// Musashi does this automagically for you, UAE core does not :-P
 	address &= 0x00FFFFFF;
 /*if (address == 0x4E00)
@@ -1324,11 +1409,13 @@ uint32_t JaguarGetHandler(uint32_t i)
 	return JaguarReadLong(i * 4);
 }
 
+
 bool JaguarInterruptHandlerIsValid(uint32_t i) // Debug use only...
 {
 	uint32_t handler = JaguarGetHandler(i);
 	return (handler && (handler != 0xFFFFFFFF) ? true : false);
 }
+
 
 void M68K_show_context(void)
 {
@@ -1382,6 +1469,7 @@ void M68K_show_context(void)
 	}
 }
 
+
 //
 // Unknown read/write byte/word routines
 //
@@ -1416,6 +1504,7 @@ void jaguar_unknown_writebyte(unsigned address, unsigned data, uint32_t who/*=UN
 #endif
 }
 
+
 void jaguar_unknown_writeword(unsigned address, unsigned data, uint32_t who/*=UNKNOWN*/)
 {
 #ifdef LOG_UNMAPPED_MEMORY_ACCESSES
@@ -1429,6 +1518,7 @@ void jaguar_unknown_writeword(unsigned address, unsigned data, uint32_t who/*=UN
 		doDSPDis = true;
 #endif
 }
+
 
 unsigned jaguar_unknown_readbyte(unsigned address, uint32_t who/*=UNKNOWN*/)
 {
@@ -1445,6 +1535,7 @@ unsigned jaguar_unknown_readbyte(unsigned address, uint32_t who/*=UNKNOWN*/)
     return 0xFF;
 }
 
+
 unsigned jaguar_unknown_readword(unsigned address, uint32_t who/*=UNKNOWN*/)
 {
 #ifdef LOG_UNMAPPED_MEMORY_ACCESSES
@@ -1460,6 +1551,7 @@ unsigned jaguar_unknown_readword(unsigned address, uint32_t who/*=UNKNOWN*/)
     return 0xFFFF;
 }
 
+
 //
 // Disassemble M68K instructions at the given offset
 //
@@ -1469,15 +1561,18 @@ unsigned int m68k_read_disassembler_8(unsigned int address)
 	return m68k_read_memory_8(address);
 }
 
+
 unsigned int m68k_read_disassembler_16(unsigned int address)
 {
 	return m68k_read_memory_16(address);
 }
 
+
 unsigned int m68k_read_disassembler_32(unsigned int address)
 {
 	return m68k_read_memory_32(address);
 }
+
 
 void JaguarDasm(uint32_t offset, uint32_t qt)
 {
@@ -1499,6 +1594,7 @@ void JaguarDasm(uint32_t offset, uint32_t qt)
 	}
 #endif
 }
+
 
 uint8_t JaguarReadByte(uint32_t offset, uint32_t who/*=UNKNOWN*/)
 {
@@ -1525,6 +1621,7 @@ uint8_t JaguarReadByte(uint32_t offset, uint32_t who/*=UNKNOWN*/)
 
 	return data;
 }
+
 
 uint16_t JaguarReadWord(uint32_t offset, uint32_t who/*=UNKNOWN*/)
 {
@@ -1554,6 +1651,7 @@ uint16_t JaguarReadWord(uint32_t offset, uint32_t who/*=UNKNOWN*/)
 
 	return jaguar_unknown_readword(offset, who);
 }
+
 
 void JaguarWriteByte(uint32_t offset, uint8_t data, uint32_t who/*=UNKNOWN*/)
 {
@@ -1590,6 +1688,7 @@ void JaguarWriteByte(uint32_t offset, uint8_t data, uint32_t who/*=UNKNOWN*/)
 
 	jaguar_unknown_writebyte(offset, data, who);
 }
+
 
 uint32_t starCount;
 void JaguarWriteWord(uint32_t offset, uint16_t data, uint32_t who/*=UNKNOWN*/)
@@ -1726,11 +1825,13 @@ if (offset == 0x11D31A + 0x48000 || offset == 0x11D31A)
 	jaguar_unknown_writeword(offset, data, who);
 }
 
+
 // We really should re-do this so that it does *real* 32-bit access... !!! FIX !!!
 uint32_t JaguarReadLong(uint32_t offset, uint32_t who/*=UNKNOWN*/)
 {
 	return (JaguarReadWord(offset, who) << 16) | JaguarReadWord(offset+2, who);
 }
+
 
 // We really should re-do this so that it does *real* 32-bit access... !!! FIX !!!
 void JaguarWriteLong(uint32_t offset, uint32_t data, uint32_t who/*=UNKNOWN*/)
@@ -1748,17 +1849,20 @@ void JaguarWriteLong(uint32_t offset, uint32_t data, uint32_t who/*=UNKNOWN*/)
 	JaguarWriteWord(offset+2, data & 0xFFFF, who);
 }
 
+
 void JaguarSetScreenBuffer(uint32_t * buffer)
 {
 	// This is in TOM, but we set it here...
 	screenBuffer = buffer;
 }
 
+
 void JaguarSetScreenPitch(uint32_t pitch)
 {
 	// This is in TOM, but we set it here...
 	screenPitch = pitch;
 }
+
 
 //
 // Jaguar console initialization
